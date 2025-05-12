@@ -6,7 +6,7 @@
 readonly prog_name="Anon-Route"
 readonly version="1.0.0"
 readonly signature="Copyright (C) 2025"
-readonly git_url="https://github.com/brainfucksec/Anon-ROUTE"
+readonly git_url="https://github.com/AzadCheema02/Anon-Route"
 
 # set colors for stdout
 export red="$(tput setaf 1)"
@@ -41,7 +41,6 @@ readonly non_tor="127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
 
 ## Show program banner
 banner() {
-#!/bin/bash
 
 # Check if figlet is installed
 if ! command -v figlet &> /dev/null
@@ -54,14 +53,11 @@ fi
 clear
 
 # Display Anon-Route banner
-figlet "<..../Anon-Route\....>"
+echo -e "${green}$(figlet 'Anon-Route')${reset}"
 
-printf "${b}${white}
-${version}
-
-=[ Transparent proxy through Tor
-=[ CHEEMA
-${reset}\\n\\n"
+    printf "${blue}${b}Version:${reset} ${green}1.0.0${reset}\n"
+    printf "${yellow}=[ Transparent proxy through Tor${reset}\n"
+    printf "${white}=[ Created by AZADVIR SINGH${reset}\n"
 }
 
 
@@ -284,29 +280,43 @@ check_ip() {
     fi
 
     echo -e "\n[🌐] Regular IP Information:"
-    ipinfo_response=$(curl --silent --fail https://api.myip.com)
+    ipinfo_response=$(curl --silent --fail https://ipwho.is)
 
     if [[ $? -eq 0 && -n "$ipinfo_response" ]]; then
         ip=$(echo "$ipinfo_response" | jq -r '.ip')
         country=$(echo "$ipinfo_response" | jq -r '.country')
-        cc=$(echo "$ipinfo_response" | jq -r '.cc')
+        region=$(echo "$ipinfo_response" | jq -r '.region')
+        city=$(echo "$ipinfo_response" | jq -r '.city')
+        isp=$(echo "$ipinfo_response" | jq -r '.connection.org')
 
         echo -e "IP:        $ip"
-        echo -e "Country:   $country ($cc)"
+        if [[ "$country" == "Unknown" ]]; then
+            echo -e "Location:  Unknown (May be anonymized or unresolvable)"
+        else
+            echo -e "Location:  $city, $region, $country"
+        fi
+        echo -e "ISP:       $isp"
     else
         echo "[!] Failed to fetch regular IP info"
     fi
 
     echo -e "\n[🧅] Tor IP Information:"
-    tor_ipinfo_response=$(curl --silent --socks5-hostname 127.0.0.1:9050 https://api.myip.com)
+    tor_ipinfo_response=$(curl --silent --socks5-hostname 127.0.0.1:9050 https://ipwho.is)
 
     if [[ $? -eq 0 && -n "$tor_ipinfo_response" ]]; then
         tor_ip=$(echo "$tor_ipinfo_response" | jq -r '.ip')
         tor_country=$(echo "$tor_ipinfo_response" | jq -r '.country')
-        tor_cc=$(echo "$tor_ipinfo_response" | jq -r '.cc')
+        tor_region=$(echo "$tor_ipinfo_response" | jq -r '.region')
+        tor_city=$(echo "$tor_ipinfo_response" | jq -r '.city')
+        tor_isp=$(echo "$tor_ipinfo_response" | jq -r '.connection.org')
 
         echo -e "Tor IP:        $tor_ip"
-        echo -e "Tor Country:   $tor_country ($tor_cc)"
+        if [[ "$tor_country" == "Unknown" ]]; then
+            echo -e "Tor Location:  Unknown (Likely a Tor exit node)"
+        else
+            echo -e "Tor Location:  $tor_city, $tor_region, $tor_country"
+        fi
+        echo -e "Tor ISP:       $tor_isp"
     else
         echo "[!] Failed to fetch Tor IP info (is Tor running?)"
     fi
@@ -464,6 +474,49 @@ restart() {
         die "Tor service is not running! exit"
     fi
 }
+## check IP Table Rules
+show_iptables() {
+    echo -e "${b}${blue}🛡️  Current iptables Rules:${reset}"
+    sudo iptables -L -n -v --line-numbers
+}
+
+check_system_resources() {
+    echo -e "\n--- System Resource Usage ---"
+
+    # CPU usage
+    echo -n "CPU Usage: "
+    mpstat | grep "all" | awk '{print $3"%"}'
+
+    # RAM usage
+    echo -n "RAM Usage: "
+    free -h | grep Mem | awk '{print $3 "/" $2 " (" $3/$2*100 "%)"}'
+
+    # Disk usage
+    echo -n "Disk Usage: "
+    df -h | grep "^/dev" | awk '{print $1 ": " $5}'
+
+    echo -e "\n--- Resource Check Completed ---"
+}
+
+rotate_tor_ip() {
+    echo -e "\n--- Rotating IP ---"
+    
+    # Check if Tor is running
+    if ! pgrep tor > /dev/null; then
+        echo "Tor service is not running. Please start Tor first."
+        return
+    fi
+
+    # Send the signal to Tor to get a new IP
+    echo "Sending SIGINT to Tor to request new circuit (IP)..."
+    tor --signal NEWNYM
+    sleep 10  # Wait for the new IP to be assigned
+    
+    # Confirm the IP has changed
+    echo "Checking current public IP..."
+    curl -s ifconfig.me
+    echo -e "\n--- IP Rotation Completed ---"
+}
 
 
 ## Show help menù
@@ -481,9 +534,11 @@ usage() {
     printf "%s\\n" "-c, --clearnet  reset iptables and return to clearnet navigation"
     printf "%s\\n" "-s, --status    check status of program and services"
     printf "%s\\n" "-i, --ipinfo    show public IP address"
+    printf "%s\\n\\n" "-tb, --table   display current IP Table Rules"
+    printf "%s\\n\\n" "-rc, --resource-chech   display  system's CPU, RAM, and disk usage performance"
+    printf "%s\\n" "-rip, --rotate-ip      rotate the Tor IP automatically after 10 seconds"
     printf "%s\\n" "-r, --restart   restart tor service and change IP address"
     printf "%s\\n\\n" "-v, --version   display program version and exit"
-
     printf "%s\\n" "Project URL: ${git_url}"
     printf "%s\\n" "Report bugs: ${git_url}/issues"
 
@@ -517,6 +572,15 @@ main() {
                 ;;
             -i | --ipinfo)
                 check_ip
+                ;;
+            -tb | --table)
+                show_iptables
+                ;;
+            -rc | --resource-check)
+                check_system_resources
+                ;;
+            -rip | --rotate-ip)
+                rotate_tor_ip
                 ;;
             -v | --version)
                 print_version
